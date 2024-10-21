@@ -1,4 +1,4 @@
-FROM amazonlinux:2
+FROM amazonlinux:2023
 
 # Set up working directories
 RUN mkdir -p /opt/app
@@ -11,23 +11,52 @@ COPY ./*.py /opt/app/
 COPY requirements.txt /opt/app/requirements.txt
 
 # Install packages
-RUN yum update -y
-RUN yum install -y cpio python3-pip yum-utils zip unzip less
-RUN yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+RUN dnf update -y
+RUN dnf install -y automake \
+  cpio \
+  gcc-c++ \
+  git \
+  gnutls \
+  gnutls-devel \
+  gnutls-utils \
+  less \
+  libtool \
+  libtool-ltdl-devel \
+  m4 \
+  python3-pip \
+  unzip \
+  yum-utils \
+  zip
 
 # This had --no-cache-dir, tracing through multiple tickets led to a problem in wheel
 RUN pip3 install -r requirements.txt
 RUN rm -rf /root/.cache/pip
 
-# Download libraries we need to run in lambda
 WORKDIR /tmp
-RUN yumdownloader -x \*i686 --archlist=x86_64 clamav clamav-lib clamav-update json-c pcre2 libprelude gnutls libtasn1 lib64nettle nettle
-RUN rpm2cpio clamav-0*.rpm | cpio -idmv
+RUN mkdir libprelude \
+  && git clone https://github.com/Prelude-SIEM/libprelude.git \
+  && cd libprelude \
+  && ./autogen.sh \
+  && ./configure \
+  && make
+
+# Download libraries we need to run in lambda
+RUN dnf download -x \*i686 --archlist=aarch64 \
+  clamav \
+  clamav-lib \
+  clamav-update \
+  json-c \
+  pcre2 \
+  # libprelude \
+  # gnutls \
+  libtasn1 \
+  lib64nettle \
+  nettle
+RUN rpm2cpio clamav-1*.rpm | cpio -idmv
 RUN rpm2cpio clamav-lib*.rpm | cpio -idmv
 RUN rpm2cpio clamav-update*.rpm | cpio -idmv
 RUN rpm2cpio json-c*.rpm | cpio -idmv
 RUN rpm2cpio pcre*.rpm | cpio -idmv
-RUN rpm2cpio gnutls* | cpio -idmv
 RUN rpm2cpio nettle* | cpio -idmv
 RUN rpm2cpio lib* | cpio -idmv
 RUN rpm2cpio *.rpm | cpio -idmv
